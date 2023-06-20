@@ -1,3 +1,11 @@
+# Project files
+**/.DS_Store
+result
+result_test
+dataset
+all_result_test
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
