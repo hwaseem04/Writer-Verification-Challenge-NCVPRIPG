@@ -137,6 +137,7 @@ def obtain_transform(im, points):
     return thresh
 
 def get_save_patches(img1, img2, label):
+    global counter
     path1 = img1
     path2 = img2
 
@@ -147,22 +148,21 @@ def get_save_patches(img1, img2, label):
     P2 = []
     for i in range(len(df1)):
         p1_points = df1.iloc[np.random.randint(0,len(df1)), :].values
-        path1 = path1.replace('result_test', 'dataset/val').replace('res_', '')
-        img1 = cv2.imread(path1, 0)        
+        path1 = path1.replace('all_result_test', f'{cfg.data_path}val').replace('res_', '')
+        img1 = cv2.imread(path1, 0)       
         p1 = obtain_transform(img1, p1_points)
         P1.append(p1)
 
     for i in range(len(df2)):
         p2_points = df2.iloc[np.random.randint(0,len(df2)), :].values
-        path2 = path2.replace('result_test', 'dataset/val').replace('res_', '')
+        path2 = path2.replace('all_result_test', f'{cfg.data_path}val').replace('res_', '')
         img2 = cv2.imread(path2, 0)
         p2 = obtain_transform(img2, p2_points)
         P2.append(p2)
     
     if len(P1) == 0 or len(P2) == 0:
         return 1
-
-    counter = 1
+    
     for p1 in P1:
         for p2 in P2:
             cv2.imwrite(f'result_test/data_1/img_{counter}_{label}.png', p1)
@@ -170,7 +170,6 @@ def get_save_patches(img1, img2, label):
             counter += 1
     # print(len(P1), len(P2), counter-1)
     return 0
-    
 
 def predict(model, test_loader):
     proba = []
@@ -188,33 +187,25 @@ def create_loader():
     test_loader = DataLoader(dataset, collate_fn=custom_collate, batch_size=cfg.batch_size, shuffle=True)
     return test_loader
 
+counter = 1
 if __name__ == '__main__':
     cfg = Config().parse()
     csv_path = cfg.csv_path
     test_path = cfg.test_path
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('mps')
     model = torch.load('model.pth', map_location=device)
 
     df = pd.read_csv(csv_path)
     prob = []
     pred_labels = []
 
-    os.system('rm -r result_test')
-    os.makedirs('result_test', exist_ok=True)
-    os.makedirs('result_test/data_1', exist_ok=True)
-    os.makedirs('result_test/data_2', exist_ok=True)
-
-    visited = []
+    os.makedirs('all_result_test', exist_ok=True)
+    
+    print(df)
     for i in range(len(df)):
-        print(i)
-        label = int(df.iloc[i, 2])
+        print(i+1)
         path1 = os.path.join(test_path, df.iloc[i,0])
         path2 = os.path.join(test_path, df.iloc[i,1])
 
-        if path1 not in visited:
-            store(path1, 'all_result_test/')
-            visited.append(path1)
-        if path2 not in visited:
-            store(path2, 'all_result_test/')
-            visited.append(path2)
-    
+        store(path1, 'all_result_test/')
+        store(path2, 'all_result_test/')
