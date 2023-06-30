@@ -1,11 +1,11 @@
 import torch
 import numpy as np
 
-from torch.optim import lr_scheduler, RMSprop, Adam
+from torch.optim import lr_scheduler, RMSprop, Adam, AdamW
 from config import Config
 
 from load_data import create_dataloader
-from model.writerModel import  ContrastiveLoss, Model, BaseModel
+from model.writerModel import  ContrastiveLoss, Model, BaseModel, ContrastiveLoss_test
 
 import wandb
 import torch.nn as nn
@@ -34,22 +34,22 @@ def train(epoch, data, data_vl):
             pred = model(x_batch, mask_batch, indices)
             
             # print(pred)
-            loss = loss_fn(pred, y_batch)
-            # print('Train Loss :', loss)
-            #loss = loss_fn(pred, y_batch.reshape(-1,1))
+            # loss = loss_fn(pred, y_batch)
+            loss = loss_fn(pred[:, 0, :], pred[:, 1, :], y_batch)
             (loss/g).backward()
+
             # loss.backward()
             # optimizer.step()
-            
             # optimizer.zero_grad()
-            train_loss[i] += loss.item() * x_batch.size(0)
             
             if (t + 1) % g == 0:
                 optimizer.step()
                 optimizer.zero_grad()
-                print('train loss :', loss) 
+                train_loss[i] += loss.item() * x_batch.size(0) * g
+                print('train loss :', train_loss[i]) 
                 print()
-
+            # train_loss[i] += loss.item() * x_batch.size(0)
+            # print(train_loss[i])
         train_loss[i] /= len(data.dataset)
     
         print('Evaluation')
@@ -60,12 +60,12 @@ def train(epoch, data, data_vl):
                 mask_batch, x_batch, y_batch = mask_batch.to(device), x_batch.to(device), y_batch.to(device)
                 pred = model(x_batch, mask_batch, indices)
 
-                loss = loss_fn(pred, y_batch)
+                loss = loss_fn(pred[:, 0, :], pred[:, 1, :], y_batch)
                 
                 print('valid :', loss) 
 
                 valid_loss[i] += loss.item() * x_batch.size(0)
-                
+
             valid_loss[i] /= len(data_vl.dataset)
         print(f'Epoch {i+1} loss: {train_loss[i]:.4f} val_loss:{valid_loss[i]:.4f}')
         print()
@@ -78,6 +78,7 @@ def train(epoch, data, data_vl):
 
 
 model = BaseModel(cfg.batch_size)
+# model = Model(cfg.batch_size)
 
 def print_gradients(grad):
     print(torch.sum(grad))
@@ -93,7 +94,7 @@ def register_hooks(model):
 
 wandb.init(
     project="NCVPRIPG",
-
+    name="using valid data",
     config={
         "patch size": cfg.patch_size,
         "epochs": cfg.epochs,
@@ -107,11 +108,12 @@ device = torch.device('cuda')
 model = torch.load('model.pth', map_location=device)
 model = model.to(device)
 
-loss_fn = ContrastiveLoss(alpha=0.5, beta=0.5, margin=1).to(device)
+# loss_fn = ContrastiveLoss(alpha=0.5, beta=0.5, margin=2).to(device)
+loss_fn = ContrastiveLoss_test().to(device)
 
 #loss_fn = nn.BCEWithLogitsLoss()
 
-optimizer = Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999))
+optimizer = AdamW(model.parameters(), lr=4e-4, betas=(0.9, 0.999))
 #optimizer = RMSprop(model.parameters(), lr=1e-5, eps=1e-8, weight_decay=5e-4, momentum=0.9)
 #scheduler = lr_scheduler.StepLR(optimizer, 5, 0.1)
 epochs = cfg.epochs
@@ -122,11 +124,3 @@ train_loss, val_loss = train(epochs, train_loader, val_loader)
 #torch.save(model, 'model.pth')
 del model
 model = torch.load('model.pth', map_location=device)
-
-import matplotlib.pyplot as plt
-plt.title('Training graph')
-plt.xlabel('Epoch')
-plt.plot(np.arange(epochs), train_loss)
-plt.plot(np.arange(epochs), val_loss)
-plt.legend(['Training loss', 'Validation Loss'])
-plt.savefig('outputs/sig.png')
