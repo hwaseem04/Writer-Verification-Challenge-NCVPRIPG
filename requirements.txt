@@ -1,0 +1,13 @@
+matplotlib
+natsort
+numpy==1.24.3
+opencv-python==4.7.0.68
+pandas==1.5.2
+einops
+torch==2.0.1
+torchmetrics==0.11.0
+torchvision
+tqdm
+transformers 
+
+

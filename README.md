@@ -7,7 +7,7 @@
 
 ## Requirements
 - Python 3.9
-- [requirements.txt]()
+- [Requirements.txt](requirements.txt)
 - [PyTorch CRAFT](https://github.com/clovaai/CRAFT-pytorch)
 
 ## Setup
