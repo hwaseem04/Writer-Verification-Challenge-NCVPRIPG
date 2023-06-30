@@ -5,11 +5,12 @@ import numpy as np
 import pandas as pd
 from glob import glob
 from config import Config
+import matplotlib.pyplot as plt
 from scipy import stats as st
 from torch.utils.data import DataLoader
 from model.writerModel import BaseModel
 from load_data import Read_patch, custom_collate
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, roc_auc_score
 
 
 
@@ -87,7 +88,7 @@ def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly, r
 # Global definition 
 # Load Craft Model
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-# device = torch.device('mps')
+device = torch.device('mps')
 
 net = CRAFT()     # initialize
 
@@ -144,7 +145,6 @@ def obtain_transform(im, points):
 def get_save_patches(img1, img2, label):
     path1 = img1
     path2 = img2
-
     df1 = pd.read_csv(path1.split('.')[0] + '.txt', names=['x1','y1', 'x2','y2', 'x3','y3', 'x4','y4'])
     df2 = pd.read_csv(path2.split('.')[0] + '.txt', names=['x1','y1', 'x2','y2', 'x3','y3', 'x4','y4'])
 
@@ -152,14 +152,14 @@ def get_save_patches(img1, img2, label):
     P2 = []
     for i in range(len(df1)):
         p1_points = df1.iloc[np.random.randint(0,len(df1)), :].values
-        path1 = path1.replace('all_result_test', f'{cfg.data_path}val').replace('res_', '')
+        path1 = path1.replace('all_result_test', f'{cfg.test_path}').replace('res_', '')
         img1 = cv2.imread(path1, 0)       
         p1 = obtain_transform(img1, p1_points)
         P1.append(p1)
 
     for i in range(len(df2)):
         p2_points = df2.iloc[np.random.randint(0,len(df2)), :].values
-        path2 = path2.replace('all_result_test', f'{cfg.data_path}val').replace('res_', '')
+        path2 = path2.replace('all_result_test', f'{cfg.test_path}').replace('res_', '')
         img2 = cv2.imread(path2, 0)
         p2 = obtain_transform(img2, p2_points)
         P2.append(p2)
@@ -176,33 +176,29 @@ def get_save_patches(img1, img2, label):
     # print(len(P1), len(P2), counter-1)
     return 0
     
+def custom_sigmoid(z, threshold):
+    denominator = 1 + np.exp( 10 * (threshold - z))
+    return 1 / denominator
 
 def predict(model, test_loader):
-    # proba = []
+    threshold = 2.0
     pred_label = []
     for mask, x, y, indices in test_loader:
         x = x/255
         mask, x, y = mask.to(device), x.to(device), y.to(device)
         pred = model(x, mask, indices)
         D = (pred[:, 0, :] - pred[:, 1, :]).pow(2).sum(1).sqrt()
-        # print(D)
-        # if D >= 1:
-        #     pred_label.append(1)
-        # else:
-        #     pred_label.append(0)
-        pred_label.append(D.cpu().detach().numpy()[0])
 
-        # print(y)
-    print(pred_label)
+        pred_label.append(D.cpu().detach().numpy()[0])   
+
     mode = np.mean(np.array(pred_label))
-    print(mode)
+    proba = custom_sigmoid(mode, threshold)
     
-    if mode > 0.2:
-        return 1
+    if mode > threshold:
+        return 1, proba
     else:
-        return 0
-    # mode = max(pred_label, key= lambda x: pred_label.count(x))
-    return mode
+        return 0, proba
+
 
 
 def create_loader():
@@ -212,11 +208,12 @@ def create_loader():
     return test_loader
 
 if __name__ == '__main__':
+    inspect = False
     cfg = Config().parse()
     csv_path = cfg.csv_path
     test_path = cfg.test_path
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    # device = torch.device('mps')
+    device = torch.device('mps')
     model = torch.load('model.pth', map_location=device)
     model.bs = cfg.batch_size
     df = pd.read_csv(csv_path)
@@ -224,7 +221,7 @@ if __name__ == '__main__':
     pred_labels = []
     true_label = []
     for i in range(len(df)):
-        label = int(df.iloc[i, 2])
+        label = 0 #int(df.iloc[i, 2])
         path1 = os.path.join(test_path, df.iloc[i,0])
         path2 = os.path.join(test_path, df.iloc[i,1])
 
@@ -232,19 +229,7 @@ if __name__ == '__main__':
         os.makedirs('result_test', exist_ok=True)
         os.makedirs('result_test/data_1', exist_ok=True)
         os.makedirs('result_test/data_2', exist_ok=True)
-
-        # store(path1, 'result_test/')
-        # store(path2, 'result_test/')
-
-        # files = glob(os.path.join('result_test', '*.jpg'))
-        # files_final = []
-        # for file in files:
-        #     if 'mask' in file:
-        #         continue
-        #     else:
-        #         files_final.append(file)
-
-        # path1, path2 = files_final # files_final has 2 images only - always
+        
         path1 = os.path.join('all_result_test', f'res_{df.iloc[i,0]}')
         path2 = os.path.join('all_result_test', f'res_{df.iloc[i,1]}')
 
@@ -252,18 +237,37 @@ if __name__ == '__main__':
 
         if flag:
             proba = np.random.rand()
-            # break
-            print('random')
+            if proba >= 0.5:
+                pred_label=1
+            else:
+                pred_label=0
         else:
             test_loader = create_loader()
-            pred_label = predict(model, test_loader)
-            proba = np.random.rand()
+            pred_label, proba = predict(model, test_loader)
         
         prob.append(proba)
         pred_labels.append(pred_label)
-        true_label.append(label)
-        f1 = f1_score(y_pred=np.array(pred_labels), y_true= np.array(true_label))
-        print(f'Iteration: {i+1}, Prediction: {pred_label}, Actual: {label}, F1 Score: {f1}')
+        # true_label.append(label)
+        # f1 = f1_score(y_pred=np.array(pred_labels), y_true= np.array(true_label))
+        # if i > 20:
+        #     auc = roc_auc_score(y_score=np.array(prob), y_true=np.array(true_label))
+        # else:
+        #     auc = None
+
+        print(f'Iteration: {i+1}, Prediction: {pred_label}')#, Actual: {label}, F1 Score: {f1}, AUC Score: {auc}')
+        # if (label != pred_label) and inspect:
+        #     plt.figure(figsize=(15,5))
+        #     img1 = cv2.imread(path1, 0)
+        #     img2 = cv2.imread(path2, 0)
+        #     # print(files[i][0].shape)
+        #     plt.subplot(1,2,1)
+        #     plt.imshow(img1, cmap='gray')
+        #     plt.axis('off')
+        #     plt.subplot(1,2,2)
+        #     plt.imshow(img2, cmap='gray')
+        #     plt.axis('off')
+        #     plt.show()
+            
         print()
         print()
         # break
@@ -274,17 +278,8 @@ if __name__ == '__main__':
     df['proba'] = prob 
     df['label'] = pred_labels 
 
-    df.to_csv('Vision_One_2.csv', index=False)
+    new_df = pd.DataFrame()
+    new_df['id'] = df['img1_name'] + '_' + df['img2_name']
+    new_df['proba'] = df['proba']
+    new_df.to_csv('Single Vision_02.csv', index=False)
         
-    
-# # Improvement
-# Proper loss function
-# Proper final layer activation
-# Proper Optimizier - learn
-# Masking tokens in self-attn of encoder (because zero padded)
-# Check whether data pairs are porperly generated. Avoid self similar pairs
-# ? Instead of random patch generation, for each image pair, map all words to each other as similar pair. For dissimilar pair, map atleast 2 from each writer. 
-
-
-# While inference
-# Think about weighted aggregation of prediction
