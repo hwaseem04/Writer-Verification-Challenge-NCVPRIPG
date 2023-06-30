@@ -2,7 +2,7 @@
 
 ## Model information
 - It is a two stage model. [CRAFT](https://github.com/clovaai/CRAFT-pytorch) is used to extract words from each images. Each word of writers are then paired appropriately (similar / dissimilar). 
-- Each pair is tokenised, appended as a single token and passed into a vision transformer. 
+- Each pair is tokenised, appended as a single token and passed into a `Vision transformer`. 
 - Average pooling is finally applied on respective token outputs from encoder from which euclidean distance is calculated. Contrastive loss with a margin is used for training.
 
 ## Requirements
