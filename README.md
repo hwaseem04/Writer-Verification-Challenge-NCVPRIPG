@@ -1,5 +1,8 @@
 # Writer-Verification-Challenge-NCVPRIPG
 
+## Introduction
+- Visit my blog to know more about the architecture: [Blog](https://hwaseem04.github.io/blogs/writer/)
+
 ## Model information
 - It is a two stage model. [CRAFT](https://github.com/clovaai/CRAFT-pytorch) is used to extract words from each images. Each word of writers are then paired appropriately (similar / dissimilar). 
 - Each pair is tokenised, appended as a single token and passed into a `Vision transformer`. 
